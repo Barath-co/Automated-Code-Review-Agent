@@ -3,3 +3,22 @@ __pycache__/
 .env
 *.pyc
 instance/
+
+# Environment and secrets
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
