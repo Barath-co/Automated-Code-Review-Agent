@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Automated Code Review Agent</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand-mark">CR</div>
+  <div><div class="brand-title">CodeReview <span>Agent</span></div><div class="brand-sub">Agentic AI · Automated source analysis</div></div>
+  <div class="top-pill"><i></i> Review workspace</div>
+</header>
+<main class="shell">
+  <section class="hero">
+    <div class="eyebrow">INTELLIGENT CODE QUALITY</div>
+    <h1>Ship cleaner code.<br><span>Catch issues earlier.</span></h1>
+    <p>Analyze source code, understand potential risks, and get practical suggestions in one review workspace.</p>
+  </section>
+  <section class="workspace">
+    <div class="panel editor-panel">
+      <div class="panel-heading"><div><span class="step">01</span><h2>Source code</h2></div><span class="muted">INPUT</span></div>
+      <div class="toolbar">
+        <label for="language">Language</label>
+        <select id="language">{% for lang in languages %}<option value="{{lang}}">{{lang|title}}</option>{% endfor %}</select>
+        <button class="btn btn-ghost" id="sampleBtn">Load sample</button>
+      </div>
+      <div class="editor-wrap">
+        <div class="line-gutter" id="gutter">1</div>
+        <textarea id="code" spellcheck="false" aria-label="Source code" placeholder="# Paste your code here..."></textarea>
+      </div>
+      <div class="editor-footer"><span id="lineCount">0 lines</span><span>UTF-8 · Max 200k characters</span></div>
+      <div class="actions">
+        <label class="btn btn-ghost upload-label">↑ Upload file<input type="file" id="fileInput" hidden accept=".py,.js,.ts,.java,.c,.cpp,.h,.cs,.go,.php,.rb,.txt"></label>
+        <button class="btn btn-primary" id="reviewBtn"><span>✦</span> Review code</button>
+      </div>
+      <div class="error" id="errorBox" hidden></div>
+      <div class="privacy-note"><span>◇</span> Your code is analyzed by this app. AI review sends code to the configured API provider only when an API key is enabled.</div>
+    </div>
+    <div class="panel results-panel">
+      <div class="panel-heading"><div><span class="step">02</span><h2>Review report</h2></div><span class="muted" id="status">READY</span></div>
+      <div id="emptyState" class="empty-state">
+        <div class="empty-icon">⌘</div><h3>Your review starts here</h3>
+        <p>Submit code to reveal findings, severity levels, and actionable improvements.</p>
+        <div class="mini-steps"><div><b>01</b><span>Analyze patterns</span></div><div><b>02</b><span>Prioritize findings</span></div><div><b>03</b><span>Improve the code</span></div></div>
+      </div>
+      <div id="report" hidden>
+        <div class="score-row"><div><div class="muted">QUALITY INDICATOR</div><div class="score"><span id="score">—</span><small>/ 100</small></div></div><div class="score-ring" id="scoreRing"><span id="scoreRingText">—</span></div></div>
+        <p id="summary" class="summary"></p>
+        <div class="counts" id="counts"></div>
+        <div class="findings-head"><h3>Findings</h3><span id="findingTotal" class="muted"></span></div>
+        <div id="findings" class="findings"></div>
+        <div class="section-title">Suggested next steps</div><ul id="nextSteps" class="next-steps"></ul>
+        <div id="strengthsWrap" hidden><div class="section-title">Strengths detected</div><ul id="strengths" class="next-steps"></ul></div>
+        <div class="report-bottom"><p id="engineLabel"></p><button class="btn btn-ghost" id="exportBtn">↓ Export JSON</button></div>
+        <p class="disclaimer" id="disclaimer"></p>
+      </div>
+    </div>
+  </section>
+  <footer>Automated Code Review Agent <span>·</span> Student project prototype</footer>
+</main>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body></html>
