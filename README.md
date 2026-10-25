@@ -6,7 +6,7 @@ A student project in the Agentic AI domain. It reviews submitted source code, fl
 - Browser-based code editor and source-file upload
 - Language selection for Python, JavaScript, TypeScript, Java, C, C++, C#, Go, PHP and Ruby
 - Local heuristic checks for common risky patterns and maintainability issues
-- Optional AI review through the OpenAI API
+- Optional AI review powered by Google Gemini (or OpenAI fallback)
 - Severity counts, a quality indicator, findings by line, strengths, next steps
 - JSON report export
 - Responsive interface; no database required
@@ -14,7 +14,7 @@ A student project in the Agentic AI domain. It reviews submitted source code, fl
 ## Requirements
 - Python 3.10+
 - pip
-- Optional: OpenAI API key for AI-assisted review
+- Optional: Google Gemini API key (or OpenAI API key) for AI-assisted review
 
 ## Run locally
 ```bash
@@ -28,18 +28,15 @@ python app.py
 ```
 Open http://127.0.0.1:5000.
 
-The local rule-based review works without an API key. To enable AI-assisted review, copy `.env.example` to `.env`, set `OPENAI_API_KEY`, then export the variables in your terminal or use a dotenv loader of your choice. For example on macOS/Linux:
-```bash
-export OPENAI_API_KEY="your-key"
-export OPENAI_MODEL="gpt-4o-mini"
-python app.py
-```
-On Windows PowerShell:
-```powershell
-$env:OPENAI_API_KEY="your-key"
-$env:OPENAI_MODEL="gpt-4o-mini"
-python app.py
-```
+The local rule-based review works without an API key. To enable Gemini AI-assisted review:
+1. Open `.env` (or copy `.env.example` to `.env`).
+2. Add your Gemini API key:
+   ```env
+   GEMINI_API_KEY="your-gemini-api-key"
+   GEMINI_MODEL="gemini-2.5-flash"
+   ```
+3. Run `python app.py`. Environment variables in `.env` are loaded automatically!
+
 Never commit API keys or submit private/proprietary code to an external AI service without permission.
 
 ## Project architecture

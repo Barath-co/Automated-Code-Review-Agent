@@ -1,6 +1,9 @@
-"""Rule-based code review with an optional OpenAI-powered review stage."""
-import os, re
+"""Rule-based code review with optional Gemini or OpenAI-powered AI review."""
+import os, re, json
 from collections import Counter
+from dotenv import load_dotenv
+
+load_dotenv()
 
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 
@@ -93,34 +96,71 @@ def heuristic_review(code, language):
     return unique
 
 def try_ai_review(code, language, existing):
-    """Optional enhancement. Local review still works without an API key or SDK."""
-    key = os.getenv("OPENAI_API_KEY")
-    if not key:
-        return None
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=key)
-        prompt = (
-            "Review this source code for correctness, security, reliability, and maintainability. "
-            "Return JSON only with keys summary (string), findings (array of objects with title, severity "
-            "(critical/high/medium/low/info), line (integer), message, suggestion, category, snippet), "
-            "strengths (array of strings), and next_steps (array of strings). Do not claim code was executed. "
-            "Avoid speculative findings; line numbers must refer to the supplied code. "
-            f"Language: {language}\nSOURCE CODE:\n{code[:30000]}"
-        )
-        response = client.chat.completions.create(
-            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-            messages=[{"role": "system", "content": "You are a careful senior software code reviewer."},
-                      {"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            temperature=0.1
-        )
-        import json
-        payload = json.loads(response.choices[0].message.content)
-        return payload
-    except Exception:
-        # Fail safely to local findings rather than failing the whole app.
-        return None
+    """Optional enhancement. Supports Google Gemini (GEMINI_API_KEY) and OpenAI (OPENAI_API_KEY).
+    Local heuristic review still works if no API key is provided.
+    """
+    prompt = (
+        "Review this source code for correctness, security, reliability, and maintainability. "
+        "Return JSON only with keys summary (string), findings (array of objects with title, severity "
+        "(critical/high/medium/low/info), line (integer), message, suggestion, category, snippet), "
+        "strengths (array of strings), and next_steps (array of strings). Do not claim code was executed. "
+        "Avoid speculative findings; line numbers must refer to the supplied code. "
+        f"Language: {language}\nSOURCE CODE:\n{code[:30000]}"
+    )
+
+    # 1. Try Google Gemini if GEMINI_API_KEY or GOOGLE_API_KEY is configured
+    gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if gemini_key:
+        try:
+            from google import genai
+            from google.genai import types
+
+            client = genai.Client(api_key=gemini_key)
+            model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    system_instruction="You are a careful senior software code reviewer. Respond only with valid JSON.",
+                    temperature=0.1
+                )
+            )
+            text = (response.text or "").strip()
+            if text.startswith("```json"):
+                text = text[7:]
+            if text.startswith("```"):
+                text = text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+            payload = json.loads(text.strip())
+            payload["_engine_name"] = f"Hybrid local + Gemini review ({model_name})"
+            return payload
+        except Exception as exc:
+            print(f"[Gemini Review Notice] Review with Gemini encountered an issue: {exc}")
+
+    # 2. Try OpenAI if OPENAI_API_KEY is configured
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if openai_key:
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=openai_key)
+            model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "system", "content": "You are a careful senior software code reviewer."},
+                          {"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+                temperature=0.1
+            )
+            payload = json.loads(response.choices[0].message.content)
+            payload["_engine_name"] = f"Hybrid local + OpenAI review ({model_name})"
+            return payload
+        except Exception as exc:
+            print(f"[OpenAI Review Notice] Review with OpenAI encountered an issue: {exc}")
+            return None
+
+    return None
 
 def review_code(code, language):
     findings = heuristic_review(code, language)
@@ -134,7 +174,7 @@ def review_code(code, language):
         "Review security-sensitive code before deployment."
     ]
     if ai:
-        engine = "Hybrid local + AI review"
+        engine = ai.get("_engine_name", "Hybrid local + AI review")
         summary = str(ai.get("summary") or summary)
         # AI findings are accepted as advisory findings; deduplicate title/line.
         seen = {(f["title"].lower(), f["line"]) for f in findings}

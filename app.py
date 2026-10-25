@@ -1,7 +1,12 @@
-from flask import Flask, render_template, request, jsonify, send_file
-from analyzer import review_code
 import io, json, os
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+from flask import Flask, render_template, request, jsonify, send_file
+from analyzer import review_code
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024  # 1 MB upload limit
