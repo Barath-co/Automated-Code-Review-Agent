@@ -1,9 +1,6 @@
 """Rule-based code review with optional Gemini or OpenAI-powered AI review."""
 import os, re, json
 from collections import Counter
-from dotenv import load_dotenv
-
-load_dotenv()
 
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 
@@ -97,6 +94,8 @@ def heuristic_review(code, language):
 
 def try_ai_review(code, language, existing):
     """Optional enhancement. Supports Google Gemini (GEMINI_API_KEY) and OpenAI (OPENAI_API_KEY).
+    Returns a tuple: (payload_or_None, engine_name_or_None, error_message_or_None)
+    so callers can always tell whether the AI review worked, failed with an error, or was skipped.
     Local heuristic review still works if no API key is provided.
     """
     prompt = (
@@ -127,6 +126,7 @@ def try_ai_review(code, language, existing):
                 )
             )
             text = (response.text or "").strip()
+            # Strip markdown code fences if present
             if text.startswith("```json"):
                 text = text[7:]
             if text.startswith("```"):
@@ -134,10 +134,13 @@ def try_ai_review(code, language, existing):
             if text.endswith("```"):
                 text = text[:-3]
             payload = json.loads(text.strip())
-            payload["_engine_name"] = f"Hybrid local + Gemini review ({model_name})"
-            return payload
+            engine_name = f"Hybrid local + Gemini review ({model_name})"
+            return payload, engine_name, None
         except Exception as exc:
-            print(f"[Gemini Review Notice] Review with Gemini encountered an issue: {exc}")
+            error_msg = str(exc)
+            print(f"[Gemini Review Error] {error_msg}")
+            # Stop here and surface the error — do NOT silently fall through to OpenAI
+            return None, None, f"Gemini API error: {error_msg}"
 
     # 2. Try OpenAI if OPENAI_API_KEY is configured
     openai_key = os.getenv("OPENAI_API_KEY")
@@ -154,17 +157,19 @@ def try_ai_review(code, language, existing):
                 temperature=0.1
             )
             payload = json.loads(response.choices[0].message.content)
-            payload["_engine_name"] = f"Hybrid local + OpenAI review ({model_name})"
-            return payload
+            engine_name = f"Hybrid local + OpenAI review ({model_name})"
+            return payload, engine_name, None
         except Exception as exc:
-            print(f"[OpenAI Review Notice] Review with OpenAI encountered an issue: {exc}")
-            return None
+            error_msg = str(exc)
+            print(f"[OpenAI Review Error] {error_msg}")
+            return None, None, f"OpenAI API error: {error_msg}"
 
-    return None
+    # No API key configured at all — local review only, no error
+    return None, None, None
 
 def review_code(code, language):
     findings = heuristic_review(code, language)
-    ai = try_ai_review(code, language, findings)
+    ai, engine_name, ai_error = try_ai_review(code, language, findings)
     engine = "Local heuristic review"
     summary = "Review completed using local rule-based checks. Findings are suggestions to verify, not proof of a defect."
     strengths = []
@@ -173,8 +178,9 @@ def review_code(code, language):
         "Run the language's formatter, linter, and automated tests.",
         "Review security-sensitive code before deployment."
     ]
+
     if ai:
-        engine = ai.get("_engine_name", "Hybrid local + AI review")
+        engine = engine_name or "Hybrid local + AI review"
         summary = str(ai.get("summary") or summary)
         # AI findings are accepted as advisory findings; deduplicate title/line.
         seen = {(f["title"].lower(), f["line"]) for f in findings}
@@ -203,7 +209,8 @@ def review_code(code, language):
     for idx, finding in enumerate(findings, 1):
         finding["id"] = f"F{idx:03d}"
     counts = Counter(f["severity"] for f in findings)
-    return {
+
+    result = {
         "summary": summary,
         "findings": findings,
         "counts": {s: counts.get(s, 0) for s in ["critical", "high", "medium", "low", "info"]},
@@ -213,3 +220,7 @@ def review_code(code, language):
         "engine": engine,
         "disclaimer": "Automated findings can be false positives or miss issues. This tool does not execute the submitted code and is not a substitute for tests, expert review, or security auditing."
     }
+    # Surface any AI error clearly in the response so caller/UI can show it
+    if ai_error:
+        result["ai_error"] = ai_error
+    return result

@@ -2,7 +2,7 @@ import io, json, os
 from datetime import datetime
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+# Load environment variables from .env file (single authoritative call)
 load_dotenv()
 
 from flask import Flask, render_template, request, jsonify, send_file
@@ -30,6 +30,9 @@ def api_review():
         return jsonify({"error": "Unsupported language selection."}), 400
     try:
         result = review_code(code, language)
+        # Log AI errors to server console so they're visible in logs
+        if result.get("ai_error"):
+            app.logger.warning("AI review failed: %s", result["ai_error"])
         result["meta"] = {
             "language": language,
             "lines": len(code.splitlines()),
