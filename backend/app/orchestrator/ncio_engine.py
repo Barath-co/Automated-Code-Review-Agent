@@ -233,13 +233,13 @@ class NCIOOrchestrator:
         # STEP 6: Generate Unified Diff
         # ──────────────────────────────────────────────────────────────────────
         diff_lines = list(difflib.unified_diff(
-            code.splitlines(keepends=True),
-            best_refactored_code.splitlines(keepends=True),
+            code.splitlines(),
+            best_refactored_code.splitlines(),
             fromfile="Original Code",
             tofile="NCIO Validated Refactor",
             lineterm=""
         ))
-        unified_diff_str = "".join(diff_lines) if diff_lines else "No alterations proposed."
+        unified_diff_str = "\n".join(diff_lines) if diff_lines else "No alterations proposed."
 
         # ──────────────────────────────────────────────────────────────────────
         # STEP 7: Compute Execution & Financial Metrics (Table 4.4)
@@ -362,9 +362,10 @@ class NCIOOrchestrator:
 
         Scoring rubric (higher = better):
           +3  — proposed code compiles clean (syntax-valid via AST)
-          +2  — proposed code introduces zero NEW security vulnerabilities
-                (compared to original's vuln count)
-          +1  — more than one agent proposed the same (or near-identical) refactor
+          +5  — per security vulnerability resolved
+          +1  — code improvements (performance/maintainability)
+          +2  — consensus boost if multiple agents proposed identical valid code
+          -20 — proposed code introduces new security vulnerabilities
           -99 — proposed code fails syntax check (disqualified)
 
         Returns:
@@ -374,7 +375,7 @@ class NCIOOrchestrator:
         original_val = CodeValidator.validate(original_code, language)
         original_vuln_count = len(original_val.static_vulnerabilities_detected)
 
-        scored: List[Tuple[int, str, str]] = []  # (score, proposed_code, agent_name)
+        scored: List[Tuple[int, str, str, int]] = []  # (score, proposed_code, agent_name, resolved_count)
 
         for candidate in candidates:
             proposed = candidate.proposed_code
@@ -387,14 +388,18 @@ class NCIOOrchestrator:
             if not val.syntax_valid:
                 continue
 
-            score = 3  # base: compiles
+            score = 3  # base: compiles cleanly
             new_vuln_count = len(val.static_vulnerabilities_detected)
-            if new_vuln_count <= original_vuln_count:
-                score += 2  # doesn't introduce new security issues
-            else:
-                score -= 1  # penalty for introducing new vulnerabilities
+            resolved_count = max(0, original_vuln_count - new_vuln_count)
 
-            scored.append((score, proposed, candidate.persona))
+            if new_vuln_count < original_vuln_count:
+                score += (resolved_count * 5)  # Major reward for fixing vulnerabilities
+            elif new_vuln_count == original_vuln_count:
+                score += 1  # Moderate reward for clean structural/performance changes
+            else:
+                score -= 20  # Severe penalty for introducing new vulnerabilities
+
+            scored.append((score, proposed, candidate.persona, resolved_count))
 
         if not scored:
             return original_code, (
@@ -403,11 +408,12 @@ class NCIOOrchestrator:
             )
 
         # Bonus for consensus: if multiple agents proposed identical code, boost its score
-        code_counts = Counter(code for _, code, _ in scored)
+        code_counts = Counter(code for _, code, _, _ in scored)
         boosted = [
-            (score + (1 if code_counts[code] > 1 else 0), code, persona)
-            for score, code, persona in scored
+            (score + (2 if code_counts[code] > 1 else 0), code, persona, res_count)
+            for score, code, persona, res_count in scored
         ]
 
-        best_score, best_code, best_persona = max(boosted, key=lambda x: x[0])
-        return best_code, f"Selected refactor from '{best_persona}' (score={best_score})."
+        best_score, best_code, best_persona, best_resolved = max(boosted, key=lambda x: x[0])
+        detail = f"resolved {best_resolved} vulnerability(ies)" if best_resolved > 0 else "optimized code structure"
+        return best_code, f"Selected refactor from '{best_persona}' (score={best_score}, {detail}, syntax-valid)."
