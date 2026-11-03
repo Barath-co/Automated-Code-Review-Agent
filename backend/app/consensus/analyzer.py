@@ -147,6 +147,37 @@ class ConsensusAnalyzer:
                 else:
                     consolidated.append(first)
 
+        # Ingest any deterministic AST / parser findings that were missed by AI agents
+        for vuln in deterministic_validation.static_vulnerabilities_detected:
+            already_covered = any(
+                vuln["name"].lower().replace("_", " ") in f.title.lower() or
+                (f.line_start and vuln.get("line") == f.line_start and f.severity == vuln.get("severity"))
+                for f in consolidated
+            )
+            if not already_covered:
+                total_topics += 1
+                consolidated.append(ReviewFinding(
+                    id=f"AST-{len(consolidated)+1}",
+                    title=vuln["name"].replace("_", " ").title(),
+                    category="Security" if vuln.get("severity") in ("CRITICAL", "HIGH") else "Reliability",
+                    severity=vuln.get("severity", "HIGH"),
+                    line_start=vuln.get("line"),
+                    line_end=vuln.get("line"),
+                    snippet=vuln.get("line_content"),
+                    explanation=f"[Deterministic Parser Detection] {vuln.get('description', '')}",
+                    suggested_fix=vuln.get("remediation", "Fix the syntax or logic error."),
+                    confidence=0.99,
+                    reported_by=["Deterministic AST Guard"]
+                ))
+                if vuln.get("severity") in ("CRITICAL", "HIGH"):
+                    conflicts.append(ConflictItem(
+                        topic=vuln["name"].replace("_", " ").title(),
+                        agent_claims={"Deterministic Parser": f"Detected {vuln['name']} on line {vuln.get('line')}"},
+                        conflict_type="omission",
+                        resolution="Deterministic parser findings override model omissions under fail-safe principle.",
+                        resolved_by_validation=True
+                    ))
+
         # Compute consensus score
         if total_topics > 0:
             consensus_score = round((agreed_count / total_topics) * 100.0, 1)

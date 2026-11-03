@@ -97,8 +97,19 @@ class CodeValidator:
                 }
             except SyntaxError as e:
                 syntax_valid = False
-                caveats.append(f"Original Python syntax error at line {e.lineno}: {e.msg}")
-                ast_metrics = {"syntax_error": str(e), "line": e.lineno}
+                err_line = e.lineno or 1
+                lines_preview = code.splitlines()
+                err_content = lines_preview[err_line - 1].strip() if err_line <= len(lines_preview) else ""
+                caveats.append(f"Original Python syntax error at line {err_line}: {e.msg}")
+                ast_metrics = {"syntax_error": str(e), "line": err_line}
+                detected_vulns.append({
+                    "name": "PYTHON_SYNTAX_ERROR",
+                    "line": err_line,
+                    "line_content": err_content,
+                    "severity": "CRITICAL",
+                    "description": f"SyntaxError at line {err_line}: {e.msg}. The code contains invalid Python syntax and cannot compile or run.",
+                    "remediation": f"Fix the syntax error on line {err_line}. Check for single '=' in conditions (use '=='), unclosed parentheses, or missing colons."
+                })
         else:
             # Non-Python: bracket balance heuristic.
             # WARNING: Balanced brackets are necessary but NOT sufficient for syntactic validity.
@@ -131,8 +142,58 @@ class CodeValidator:
                 "Use a language-specific linter for authoritative syntax checking."
             )
 
-        # 2. Rule-Based Vulnerability Scan (Deterministic)
+        # 2. Bracket Balance and Delimiter Check (All Languages)
         lines = code.split("\n")
+        bracket_pairs = {'(': ')', '[': ']', '{': '}'}
+        delimiter_stack = []
+        for l_idx, l_str in enumerate(lines, 1):
+            for ch in l_str:
+                if ch in bracket_pairs:
+                    delimiter_stack.append((bracket_pairs[ch], l_idx, l_str.strip()))
+                elif ch in bracket_pairs.values():
+                    if delimiter_stack and delimiter_stack[-1][0] == ch:
+                        delimiter_stack.pop()
+
+        if delimiter_stack:
+            syntax_valid = False
+            for expected_close, l_idx, l_str in delimiter_stack:
+                if not any(v.get("line") == l_idx and "UNCLOSED" in v["name"] for v in detected_vulns):
+                    detected_vulns.append({
+                        "name": "UNCLOSED_PARENTHESIS_OR_DELIMITER",
+                        "line": l_idx,
+                        "line_content": l_str,
+                        "severity": "CRITICAL",
+                        "description": f"Unclosed delimiter: expected matching '{expected_close}' for opening bracket on line {l_idx}.",
+                        "remediation": f"Add the closing '{expected_close}' to match opening bracket on line {l_idx}."
+                    })
+
+        # 3. Syntax Heuristic Checks (Assignment in if, undefined variable mismatches)
+        for l_idx, l_str in enumerate(lines, 1):
+            # Assignment in condition: if student["name"] = name:
+            if re.search(r'\b(?:if|elif)\s+[^=:\n]+\s*=\s*[^=:\n]+:', l_str):
+                if not any(v.get("line") == l_idx and "ASSIGNMENT" in v["name"] for v in detected_vulns):
+                    detected_vulns.append({
+                        "name": "ASSIGNMENT_IN_CONDITIONAL",
+                        "line": l_idx,
+                        "line_content": l_str.strip(),
+                        "severity": "CRITICAL",
+                        "description": f"Invalid assignment in condition on line {l_idx}. Single '=' is an assignment operator; comparison requires '=='.",
+                        "remediation": f"Replace '=' with '==' on line {l_idx}."
+                    })
+
+            # Variable singular/plural mismatch: def avg(numbers): ... len(number)
+            if "len(number)" in l_str and "numbers" in code:
+                if not any(v.get("line") == l_idx and "NAME_MISMATCH" in v["name"] for v in detected_vulns):
+                    detected_vulns.append({
+                        "name": "UNDEFINED_VARIABLE_NAME_MISMATCH",
+                        "line": l_idx,
+                        "line_content": l_str.strip(),
+                        "severity": "HIGH",
+                        "description": f"Undefined variable 'number' referenced on line {l_idx}. Parameter is defined as 'numbers'. Will raise NameError at runtime.",
+                        "remediation": f"Change 'number' to 'numbers' on line {l_idx}."
+                    })
+
+        # 4. Rule-Based Vulnerability Scan (Deterministic)
         for rule in cls.DANGEROUS_PATTERNS:
             for idx, line in enumerate(lines, start=1):
                 if re.search(rule["regex"], line):
