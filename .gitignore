@@ -1,0 +1,27 @@
+.vercel
+node_modules/
+frontend/node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.env
+backend/.env
+backend/app/db/reviews.db
+reviews.db
+dist/
+.DS_Store
+Thumbs.db
+
+# Temporary screenshot and report generation scratch scripts
+capture_*.js
+render_pdf.js
+test_word.ps1
+convert_exact_to_pdf.ps1
+add_photos_to_original_docx.py
+update_docx_with_screenshots.py
+generate_report_pdf.py
+original_direct.pdf
+Code_Review_Agent_Report_Exact.*
+Code_Review_Agent_Report_Swapped_Images.*
